@@ -1,0 +1,15 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.pytest_cache/
+data/raw/
+data/interim/
+data/processed/
+reports/figures/
+*.parquet
+*.xlsx
+*.csv
+.ipynb_checkpoints/
