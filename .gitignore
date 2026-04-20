@@ -8,8 +8,10 @@ dist/
 data/raw/
 data/interim/
 data/processed/
-reports/figures/
+reports/figures/*
+!reports/figures/*.png
 *.parquet
 *.xlsx
 *.csv
+!reports/tables/*.csv
 .ipynb_checkpoints/

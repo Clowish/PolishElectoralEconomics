@@ -3,12 +3,11 @@ Download gmina-level economic indicators from BDL GUS REST API (v1).
 
 API docs: https://bdl.stat.gov.pl/api/v1/swagger
 
-Key variable IDs (BDL nomenclature, verified 2024):
-    P2137  – dochody budżetów gmin na 1 mieszkańca (PLN)
-    P2140  – dochody własne budżetów gmin na 1 mieszkańca (PLN)
-    P3782  – ludność ogółem
-    (PIT-level data available only at powiat level in BDL;
-     if gmina-level PIT proxy added later, set VARIABLE_PIT_ID)
+Key variable IDs (numeric BDL IDs, verified 2026-04-16):
+    76973  – dochody budżetów gmin na 1 mieszkańca (PLN), subject P2627, lata 2002-2024
+    76976  – dochody własne budżetów gmin na 1 mieszkańca (PLN), subject P2627, lata 2002-2024
+    72305  – ludność ogółem (osoba), subject P2137, lata 1995-2025
+    76049  – udziały gmin w podatkach PIT+CIT łącznie (PLN), subject P2622, lata 1995-2024
 
 Usage:
     python -m src.data.download_economic
@@ -43,16 +42,16 @@ BDL_BASE_URL = "https://bdl.stat.gov.pl/api/v1"
 BDL_PAGE_SIZE = 100  # max allowed by API
 UNIT_LEVEL_GMINA = 6  # BDL unit level for gminas
 
-# Variable IDs to download
+# Variable IDs to download (numeric BDL IDs, verified 2026-04-16)
 VARIABLES: dict[str, str] = {
-    "P2137": "dochody_per_capita",        # total budget revenue per capita
-    "P2140": "dochody_wlasne_per_capita", # own revenue per capita
-    "P3782": "ludnosc",                   # population
+    "76973": "dochody_per_capita",        # dochody budżetów gmin na 1 mieszkańca (PLN), 2002-2024
+    "76976": "dochody_wlasne_per_capita", # dochody własne gmin na 1 mieszkańca (PLN), 2002-2024
+    "72305": "ludnosc",                   # ludność ogółem (osoba), 1995-2025
 }
 
-# Optional PIT variable — available at gmina level since ~2015 in some BDL editions
-# Set to None to skip
-VARIABLE_PIT_ID: Optional[str] = None  # e.g. "P3783" if found
+# Optional PIT/CIT udziały variable — available at gmina level from 1995
+# Set to None to skip; use "76049" to include
+VARIABLE_PIT_ID: Optional[str] = "76049"  # udziały gmin w podatkach PIT+CIT łącznie (PLN)
 
 YEAR_FROM = 2000
 YEAR_TO = 2023
@@ -254,16 +253,15 @@ def compute_relative_income(
         Input DataFrame with an additional column
         ``{value_col}_relative``.
     """
-    def weighted_mean(group: pd.DataFrame) -> pd.Series:
+    def _wm_scalar(group: pd.DataFrame) -> float:
         mask = group[value_col].notna() & group[pop_col].notna() & (group[pop_col] > 0)
         g = group[mask]
         if g.empty:
-            return pd.Series(dtype=float)
-        wm = (g[value_col] * g[pop_col]).sum() / g[pop_col].sum()
-        return pd.Series({"weighted_mean": wm})
+            return float("nan")
+        return (g[value_col] * g[pop_col]).sum() / g[pop_col].sum()
 
-    means = df.groupby("year").apply(weighted_mean).reset_index()
-    means = means.rename(columns={"weighted_mean": f"{value_col}_nat_mean"})
+    nat_mean_col = f"{value_col}_nat_mean"
+    means = df.groupby("year").apply(_wm_scalar, include_groups=False).rename(nat_mean_col).reset_index()
     df = df.merge(means, on="year", how="left")
     df[f"{value_col}_relative"] = df[value_col] / df[f"{value_col}_nat_mean"]
     return df

@@ -1,9 +1,14 @@
 """
 Download and parse Sejm election results (2001–2023) from PKW/KBW sources.
 
-Data sources:
-- 2019, 2023: wyniki.pkw.gov.pl (CSV/XLSX per gmina)
-- 2001–2015: danewyborcze.kbw.gov.pl (CSV archives)
+Data sources (wszystkie na danewyborcze.kbw.gov.pl, zweryfikowane 2026-04-16):
+- 2001: dane/2001/sejm/sejm2001-lis-gm.xls (gminy, ~541KB)
+- 2005: dane/2005/sejm/1456225675_36795.xls (gminy, ~739KB)
+- 2007: dane/2007/sejm/sejm2007-gm-listy.xls (gminy, ~600KB)
+- 2011: dane/2011/sejmsenat/2011-gl-lis-gm.xls (gminy, ~729KB)
+- 2015: dane/2015/sejm/2015-gl-lis-gm.zip (gminy, ~254KB)
+- 2019: dane/2019/sejmsenat/wyniki_gl_na_listy_po_gminach_sejm_csv.zip (gminy CSV, ~139KB)
+- 2023: dane/2023/sejmsenat/wyniki_gl_na_listy_po_gminach_sejm_csv.zip (gminy CSV UTF-8, ~152KB)
 
 Usage:
     python -m src.data.download_elections            # skip if files exist
@@ -119,48 +124,50 @@ def classify_committee(name: str) -> str:
 # Download URLs
 # ---------------------------------------------------------------------------
 # Each entry: year → list of (url, local_filename)
-# PKW / KBW public archives (verified as of 2025).
+# Wszystkie pliki z danewyborcze.kbw.gov.pl — zweryfikowane 2026-04-16.
+# Pliki zawierają wyniki głosowania na listy Sejmu na poziomie gmin z kodami TERYT.
+_KBW = "https://danewyborcze.kbw.gov.pl"
 ELECTION_SOURCES: dict[int, list[tuple[str, str]]] = {
     2001: [
         (
-            "https://danewyborcze.kbw.gov.pl/resources/pliki/Wyniki_wyborow_sejmowych_2001.zip",
-            "wyniki_2001.zip",
+            f"{_KBW}/dane/2001/sejm/sejm2001-lis-gm.xls",
+            "wyniki_2001_gm.xls",
         )
     ],
     2005: [
         (
-            "https://danewyborcze.kbw.gov.pl/resources/pliki/Wyniki_wyborow_sejmowych_2005.zip",
-            "wyniki_2005.zip",
+            f"{_KBW}/dane/2005/sejm/1456225675_36795.xls",
+            "wyniki_2005_gm.xls",
         )
     ],
     2007: [
         (
-            "https://danewyborcze.kbw.gov.pl/resources/pliki/Wyniki_wyborow_sejmowych_2007.zip",
-            "wyniki_2007.zip",
+            f"{_KBW}/dane/2007/sejm/sejm2007-gm-listy.xls",
+            "wyniki_2007_gm.xls",
         )
     ],
     2011: [
         (
-            "https://danewyborcze.kbw.gov.pl/resources/pliki/Wyniki_wyborow_sejmowych_2011.zip",
-            "wyniki_2011.zip",
+            f"{_KBW}/dane/2011/sejmsenat/2011-gl-lis-gm.xls",
+            "wyniki_2011_gm.xls",
         )
     ],
     2015: [
         (
-            "https://danewyborcze.kbw.gov.pl/resources/pliki/Wyniki_wyborow_sejmowych_2015.zip",
-            "wyniki_2015.zip",
+            f"{_KBW}/dane/2015/sejm/2015-gl-lis-gm.zip",
+            "wyniki_2015_gm.zip",
         )
     ],
     2019: [
         (
-            "https://wyniki.pkw.gov.pl/wyniki/pub/510/Wyniki_GL_wr_okr_gm_do_sejmu_w_2019.zip",
-            "wyniki_2019.zip",
+            f"{_KBW}/dane/2019/sejmsenat/wyniki_gl_na_listy_po_gminach_sejm_csv.zip",
+            "wyniki_2019_gm_csv.zip",
         )
     ],
     2023: [
         (
-            "https://wyniki.pkw.gov.pl/wyniki-sejm/pub/530/wyniki_gl_na_listy_po_gminach_sejm_2023.zip",
-            "wyniki_2023.zip",
+            f"{_KBW}/dane/2023/sejmsenat/wyniki_gl_na_listy_po_gminach_sejm_csv.zip",
+            "wyniki_2023_gm_csv.zip",
         )
     ],
 }
@@ -293,16 +300,37 @@ def _parse_generic(df_raw: pd.DataFrame, year: int) -> pd.DataFrame:
     name_col = name_candidates[0] if name_candidates else None
 
     # --- Uprawnionych / głosujących / ważnych ---
-    def find_col(keywords: list[str]) -> Optional[str]:
+    def find_col(keywords: list[str], exclude: list[str] | None = None) -> Optional[str]:
         for kw in keywords:
             matches = [c for c in df.columns if kw in c.lower()]
+            if exclude:
+                matches = [c for c in matches if not any(ex in c.lower() for ex in exclude)]
             if matches:
                 return matches[0]
         return None
 
-    uprawn_col = find_col(["uprawni", "uprawnionych"])
-    glosuj_col = find_col(["głosuj", "glosuj", "wydano"])
-    waznych_col = find_col(["ważnych", "waznych", "głosów ważnych"])
+    uprawn_col = find_col(["uprawnionych do głosowania", "liczba wyborców", "uprawni", "l. upr", "upr."])
+    # Prefer aggregate "total issued" cards over pełnomocnik/zaświadczenie sub-counts
+    glosuj_col = find_col(
+        [
+            "wydano karty do głosowania",   # 2019, 2023
+            "kart wydanych",                # 2011: "Liczba kart wydanych"
+            "wydane karty",                 # 2015: "Wydane karty"
+            "oddanych kart",                # 2011: "Liczba oddanych kart"
+            "gł. odd",                      # 2001-2007 XLS abbreviated headers
+        ],
+        exclude=["pełnomocnika", "zaświadczenia", "wysłano pakiety", "nie wykorzys"],
+    )
+    # Prefer explicit "głosy ważne" / "głosów ważnych oddanych łącznie" over generic "ważnych"
+    waznych_col = find_col(
+        [
+            "głosów ważnych oddanych łącznie",  # 2019, 2023 CSV
+            "głosy ważne",                      # 2011, 2015 XLS
+            "głosów ważnych",                   # fallback
+            "ważne",                            # 2001-2007 XLS: "Ważne" column
+        ],
+        exclude=["nieważnych", "nieważne", "nieważny"],
+    )
     frekw_col = find_col(["frekwencja", "frekw"])
 
     out: dict[str, list] = {
@@ -317,7 +345,18 @@ def _parse_generic(df_raw: pd.DataFrame, year: int) -> pd.DataFrame:
 
     # Collect committee vote columns (int-ish columns after the main columns)
     fixed_cols = {teryt_col, name_col, uprawn_col, glosuj_col, waznych_col, frekw_col} - {None}
-    committee_cols = [c for c in df.columns if c not in fixed_cols]
+    # Infrastructure/metadata column keywords to exclude from committee votes
+    _INFRA_KEYWORDS = [
+        "nr okr", "nr okręgu", "komisja otrzymała", "nie wykorzystano",
+        "pakiety wyborcze", "kopert", "urny", "kart wyjętych", "kart nieważnych",
+        "kart ważnych", "głosów nieważnych", "głosów ważnych", "z powodu",
+        "łącznie na wszystkie", "liczba komisji", "pełnomocnika", "zaświadczenia",
+        "korespondenc", "wysłano pakiety", "powiat", "województwo",
+    ]
+    committee_cols = [
+        c for c in df.columns
+        if c not in fixed_cols and not any(kw in c.lower() for kw in _INFRA_KEYWORDS)
+    ]
     # Filter to columns that are likely vote counts (numeric-ish)
     vote_cols: list[str] = []
     for c in committee_cols:
@@ -336,7 +375,9 @@ def _parse_generic(df_raw: pd.DataFrame, year: int) -> pd.DataFrame:
 
     def safe_int(val) -> int:
         try:
-            return int(str(val).replace(" ", "").replace(",", "").replace("\xa0", ""))
+            # Use float() first to handle "28421.0" strings (pandas reads NaN-containing columns as float64)
+            s = str(val).strip().replace(" ", "").replace("\xa0", "").replace(",", "")
+            return int(float(s))
         except (ValueError, TypeError):
             return 0
 
@@ -359,10 +400,16 @@ def _parse_generic(df_raw: pd.DataFrame, year: int) -> pd.DataFrame:
         waznych = safe_int(row[waznych_col]) if waznych_col else 0
         out["waznych"].append(waznych)
         if frekw_col:
-            out["frekwencja"].append(safe_float(row[frekw_col]))
+            fval = safe_float(row[frekw_col])
+            # Normalise: if value > 1 it's an absolute count (XLS files) → divide by uprawnionych
+            upraw_val = out["uprawnionych"][-1]
+            if fval > 1 and upraw_val > 0:
+                fval = round(fval / upraw_val * 100, 2)
+            out["frekwencja"].append(fval)
         else:
             upraw = out["uprawnionych"][-1]
-            out["frekwencja"].append(round(out["glosujacych"][-1] / upraw * 100, 2) if upraw else 0.0)
+            glos = out["glosujacych"][-1]
+            out["frekwencja"].append(round(glos / upraw * 100, 2) if upraw else 0.0)
 
         total_valid = waznych if waznych > 0 else 1
         for vc in vote_cols:

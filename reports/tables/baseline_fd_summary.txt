@@ -1,0 +1,32 @@
+                             PanelOLS Estimation Summary                              
+======================================================================================
+Dep. Variable:     delta_pct_populist_right   R-squared:                        0.0041
+Estimator:                         PanelOLS   R-squared (Between):             -0.1866
+No. Observations:                     12361   R-squared (Within):               0.0252
+Date:                      Mon, Apr 20 2026   R-squared (Overall):              0.0192
+Time:                              19:51:21   Log-likelihood                -3.956e+04
+Cov. Estimator:                   Clustered                                           
+                                              F-statistic:                      25.198
+Entities:                              2474   P-value                           0.0000
+Avg Obs:                             4.9964   Distribution:                 F(2,12354)
+Min Obs:                             2.0000                                           
+Max Obs:                             5.0000   F-statistic (robust):             5.1195
+                                              P-value                           0.0060
+Time periods:                             5   Distribution:                 F(2,12354)
+Avg Obs:                             2472.2                                           
+Min Obs:                             2470.0                                           
+Max Obs:                             2474.0                                           
+                                                                                      
+                                     Parameter Estimates                                     
+=============================================================================================
+                           Parameter  Std. Err.     T-stat    P-value    Lower CI    Upper CI
+---------------------------------------------------------------------------------------------
+delta_dochody_pc_relative    -0.2761     0.4172    -0.6618     0.5081     -1.0940      0.5417
+delta_frekwencja             -0.1242     0.0395    -3.1421     0.0017     -0.2017     -0.0467
+=============================================================================================
+
+F-test for Poolability: 1.111e+04
+P-value: 0.0000
+Distribution: F(4,12354)
+
+Included effects: Time

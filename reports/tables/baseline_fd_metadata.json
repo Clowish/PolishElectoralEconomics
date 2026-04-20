@@ -1,0 +1,25 @@
+{
+  "input_panel": "data/processed/panel_final.parquet",
+  "specification": "delta_pct_populist_right ~ delta_dochody_pc_relative + delta_frekwencja + election_year_FE",
+  "dependent_variable": "delta_pct_populist_right",
+  "regressors": [
+    "delta_dochody_pc_relative",
+    "delta_frekwencja"
+  ],
+  "model_years": [
+    2007,
+    2011,
+    2015,
+    2019,
+    2023
+  ],
+  "n_observations": 12361,
+  "n_gminas": 2474,
+  "n_powiat_clusters": 378,
+  "time_effects": true,
+  "entity_effects": false,
+  "cluster_definition": "First 4 digits of teryt6 (powiat proxy).",
+  "r_squared": 0.004062706767022695,
+  "r_squared_within": 0.02521592696171826,
+  "covariance_estimator": "clustered"
+}

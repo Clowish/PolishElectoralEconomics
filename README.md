@@ -1,122 +1,149 @@
 # Polish Electoral Economics
 
-A panel-data research project studying the relationship between local economic conditions and electoral support for populist / mainstream parties across Polish gminas (municipalities) during the 2001–2023 period.
+Projekt badawczy o relacji między lokalną sytuacją ekonomiczną a zmianami poparcia dla partii populistycznych w wyborach do Sejmu w Polsce. Jednostką obserwacji jest gmina w roku wyborczym, a panel obejmuje wybory z lat 2001, 2005, 2007, 2011, 2015, 2019 i 2023.
 
-## Research Hypothesis
+## Pytanie badawcze
 
-> Gminas experiencing relative economic decline — measured by below-average own-revenue growth and lagging PIT receipts — exhibit systematically higher support for populist-right parties, even after controlling for gmina fixed effects and national electoral trends.
+Czy gminy, których relatywna pozycja ekonomiczna pogarsza się względem średniej krajowej, przesuwają się silniej w stronę populistycznej prawicy?
 
-The project operationalises this as a two-way fixed-effects regression:
+Projekt traktuje to jako analizę panelową, a nie eksperymentalną identyfikację przyczynową. Bazowa specyfikacja używa first differences:
 
+```text
+Δpct_populist_right_it =
+    β1 · Δdochody_pc_relative_it
+  + β2 · Δfrekwencja_it
+  + γ_t
+  + ε_it
 ```
-vote_share_populist_it = β · income_relative_it + α_i + γ_t + ε_it
-```
 
-where `α_i` are gmina fixed effects, `γ_t` are election-year fixed effects, and `income_relative_it` is a population-weighted relative income measure.
+Błędy standardowe są klastrowane na poziomie powiatu, zdefiniowanego jako pierwsze cztery cyfry kodu TERYT gminy.
 
-## Data Sources
+## Najważniejszy wynik
 
-| Dataset | Source | URL | Coverage |
-|---|---|---|---|
-| Sejm election results (gmina level) | Krajowe Biuro Wyborcze / PKW | [wyniki.pkw.gov.pl](https://wyniki.pkw.gov.pl) · [danewyborcze.kbw.gov.pl](https://danewyborcze.kbw.gov.pl) | 2001, 2005, 2007, 2011, 2015, 2019, 2023 |
-| Municipal budget revenues per capita | BDL GUS (API v1) | [bdl.stat.gov.pl/api/v1](https://bdl.stat.gov.pl/api/v1/swagger) | 2000–2023 |
-| Population by gmina | BDL GUS (API v1) | [bdl.stat.gov.pl/api/v1](https://bdl.stat.gov.pl/api/v1/swagger) | 2000–2023 |
-| TERYT crosswalk (gmina boundaries) | IBS KTS-6 | [ibs.org.pl/en/resources/crosswalks-for-polish-counties-and-municipalities-kts-5-kts-6-1999-2024/](https://ibs.org.pl/en/resources/crosswalks-for-polish-counties-and-municipalities-kts-5-kts-6-1999-2024/) | 1999–2024 |
+Model bazowy FD nie potwierdza hipotezy relative deprivation:
 
-## Installation
+- `β1 = -0.276`
+- `p = 0.508`
 
-### Requirements
+Model TWFE daje większy, granicznie istotny efekt (`β1 = -0.967`, `p = 0.075`), a robustness check z PIT daje wynik dodatni i istotny (`β1 = 2.175`, `p = 0.0003`). To sugeruje, że dochody budżetowe i PIT nie są zamiennymi miarami lokalnej sytuacji ekonomicznej.
 
-- Python ≥ 3.11
-- [uv](https://github.com/astral-sh/uv) package manager
+## Dane
 
-### Setup
+Główny panel analityczny:
+
+- `data/processed/panel_final.parquet` - bazowy panel gmina × rok wyborczy.
+- `data/processed/panel_final_v2.parquet` - panel rozszerzony o zmienne powiatowe: bezrobocie rejestrowane i przeciętne wynagrodzenie.
+
+Dane w katalogu `data/` nie są wersjonowane w Git, ponieważ zawierają surowe i przetworzone pliki wejściowe. Pipeline w `src/data/` służy do ich odtworzenia.
+
+Klucz łączenia danych to zawsze 6-cyfrowy string `teryt6`, nigdy liczba całkowita.
+
+## Źródła danych
+
+| Dane | Źródło | Zakres |
+|---|---|---|
+| Wyniki wyborów do Sejmu na poziomie gmin | PKW / KBW, `danewyborcze.kbw.gov.pl` | 2001-2023 |
+| Dochody budżetów gmin per capita | BDL GUS API | 2002-2023 |
+| Dochody własne gmin per capita | BDL GUS API | 2002-2023 |
+| PIT/CIT per capita | BDL GUS API | 2002-2023 w panelu wyborczym |
+| Ludność | BDL GUS API | używana jako waga krajowa |
+| Bezrobocie rejestrowane | BDL GUS API, poziom powiatu | 2004-2023 |
+| Przeciętne wynagrodzenie brutto | BDL GUS API, poziom powiatu | 2002-2023 |
+| Granice gmin | GeoJSON lokalny w `data/raw/spatial/` | aktualny przekrój przestrzenny |
+| Crosswalk TERYT | IBS | 1999-2025 |
+
+## Instalacja
+
+Projekt używa `uv`.
 
 ```bash
-# Clone repository
-git clone <repo-url>
-cd polish-electoral-economics
-
-# Create virtual environment and install all dependencies
-uv venv .venv
-source .venv/bin/activate          # Linux / macOS
-# .venv\Scripts\activate           # Windows
-
-uv pip install -e .
+uv sync
 ```
 
-### Optional: BDL API key
-
-A BDL API key increases the rate limit from ~60 to ~500 requests/minute.
-Register at [api.stat.gov.pl](https://api.stat.gov.pl/Home/BdlApi).
+Opcjonalnie można ustawić klucz BDL API:
 
 ```bash
 cp .env.example .env
-# Edit .env and set BDL_API_KEY=<your_key>
+# BDL_API_KEY=<twój_klucz>
 ```
 
-## Usage
+## Odtworzenie pipeline
 
-Run all data-collection steps in order:
+Wszystkie komendy uruchamiaj z katalogu głównego repozytorium.
 
 ```bash
-# Step 1 – Download election results (2001–2023)
-python -m src.data.download_elections
-
-# Step 2 – Download BDL economic indicators
-python -m src.data.download_economic
-
-# Step 3 – Harmonise TERYT codes
-python -m src.data.harmonize_teryt
+uv run python3 -m src.data.download_elections
+uv run python3 -m src.data.download_economic
+uv run python3 -m src.data.download_powiat_vars
+uv run python3 -m src.data.harmonize_teryt
+uv run python3 -m src.analysis.build_panel
 ```
 
-Add `--force` to any script to re-download existing files.
+## Analiza
 
-Explore BDL subject tree:
+Model bazowy:
 
 ```bash
-python -m src.data.download_economic --list-variables
+uv run python3 -m src.analysis.run_baseline_fd
 ```
 
-## Directory Structure
+Mapy statyczne:
 
+```bash
+uv run python3 -m src.analysis.make_maps
 ```
+
+Notebook podsumowujący:
+
+```bash
+uv run jupyter nbconvert --to notebook --execute \
+  --ExecutePreprocessor.timeout=120 \
+  notebooks/01-research-summary.ipynb \
+  --inplace
+```
+
+## Aplikacja interaktywna
+
+Aplikacja Dash pozwala eksplorować mapę, ranking gmin i trajektorie wyborczo-ekonomiczne.
+
+```bash
+uv run python3 -m src.app.app
+```
+
+Domyślny adres:
+
+```text
+http://127.0.0.1:8050/
+```
+
+W aplikacji wykres wyborczy w panelu gminy pokazuje pełną kompozycję do 100%: populistyczną prawicę, liberalne centrum, lewicę postkomunistyczną, główny nurt prawicy i inne komitety.
+
+## Struktura
+
+```text
 polish-electoral-economics/
-├── src/
-│   ├── data/
-│   │   ├── download_elections.py   # PKW/KBW election data pipeline
-│   │   ├── download_economic.py    # BDL GUS API client
-│   │   └── harmonize_teryt.py      # TERYT crosswalk & harmonisation
-│   └── analysis/                   # Panel regression models (TODO)
 ├── data/
 │   ├── raw/
-│   │   ├── elections/{year}/       # Downloaded ZIP/CSV files
-│   │   └── economic/               # Cached BDL parquet files
-│   ├── interim/                    # Cleaned, harmonised parquets
-│   └── processed/                  # Analysis-ready panel datasets
-├── notebooks/                      # Exploratory Jupyter notebooks
+│   ├── interim/
+│   └── processed/
+├── notebooks/
+│   └── 01-research-summary.ipynb
 ├── reports/
-│   └── figures/                    # Publication-quality charts
-├── tests/                          # pytest test suite
+│   ├── figures/
+│   └── tables/
+├── src/
+│   ├── analysis/
+│   ├── app/
+│   └── data/
+├── tests/
 ├── pyproject.toml
-└── .env.example
+└── README.md
 ```
 
-## Intermediate outputs
-
-| File | Description |
-|---|---|
-| `data/interim/elections_panel_raw.parquet` | Raw vote counts per gmina × year |
-| `data/interim/economic_panel.parquet` | BDL indicators per gmina × year |
-| `data/interim/teryt_crosswalk.parquet` | Full historical TERYT mapping |
-| `data/interim/teryt_stable_units.parquet` | Canonical gmina list with stability flag |
-
-## Tests
+## Testy
 
 ```bash
-pytest
+uv run pytest
 ```
 
-## License
-
-MIT License © 2024. See [LICENSE](LICENSE) for details.
+Aktualnie testy obejmują przygotowanie próby dla modelu FD i walidację kodów TERYT.
